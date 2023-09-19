@@ -1,2 +1,11 @@
-# copterr
-Compute-Optimized Permutation Testing for Ridge Regression
+# COPTeRR
+<pre>
+  
+                                                                           ______.........--=T=--.........______
+<b>C</b>ompute-<b>O</b>ptimized <b>P</b>ermutation <b>Te</b>sting for <b>R</b>idge <b>R</b>egression                    .             |:|
+                                                                         :-. //           /""""""-.
+                                                                         ': '-._____..--""(""""""()`---.__
+                                                                          /:   _..__   ''  ":""""'[] |""`\\
+                                                                          ': :'     `-.     _:._     '"""" :
+                                                                           ::          '--=:____:.___....-"
+                                                                                             O"       O"<pre>
