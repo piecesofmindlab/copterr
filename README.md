@@ -1,7 +1,8 @@
 # COPTeRR
 <pre>  
+<b>C</b>ompute-<b>O</b>ptimized <b>P</b>ermutation <b>Te</b>sting for <b>R</b>idge <b>R</b>egression
                                                                        ______.........--=T=--.........______
-<b>C</b>ompute-<b>O</b>ptimized <b>P</b>ermutation <b>Te</b>sting for <b>R</b>idge <b>R</b>egression                .             |:|
+                                                                          .             |:|
                                                                      :-. //           /""""""-.
                                                                      ': '-._____..--""(""""""()`---.__
                                                                       /:   _..__   ''  ":""""'[] |""`\\
@@ -68,7 +69,7 @@ for perm_weights in tqdm(generator, total=n_permutations):
 p_values = np.mean(np.array(perm_performance) >= model_performance, axis=0)
 print("P-Values:", p_values)
 ```
-Feel free to vary the noise_amount variable and check out the effects--lower amounts of noise should yield lower p-values for our model's performance. Also note that model r^2 is just a single example--anything you compute from your model's weights can be tested in this manner!
+Feel free to vary the noise_amount variable and check out the effects--lower amounts of noise should yield lower p-values for our model's performance. Also note that model r<sup>2</sup> is just a single example--anything you compute from your model's weights can be tested in this manner!
 
 ## Setup
 COPTeRR requires only `numpy`, `pytorch`, `scipy` and `tqdm` and can be used with a variety of Python 3 versions. `cudatoolkit` is required for CUDA-based GPU acceleration.
