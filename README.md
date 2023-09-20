@@ -1,14 +1,14 @@
 # COPTeRR
 <pre>  
 <b>C</b>ompute-<b>O</b>ptimized <b>P</b>ermutation <b>Te</b>sting for <b>R</b>idge <b>R</b>egression
-                                                                       ______.........--=T=--.........______
-                                                                          .             |:|
-                                                                     :-. //           /""""""-.
-                                                                     ': '-._____..--""(""""""()`---.__
-                                                                      /:   _..__   ''  ":""""'[] |""`\\
-                                                                      ': :'     `-.     _:._     '"""" :
-                                                                       ::          '--=:____:.___....-"
-                                                                                         O"       O"</pre>
+                                                   ______.........--=T=--.........______
+                                                      .             |:|
+                                                :-. //           /""""""-.
+                                                ': '-._____..--""(""""""()`---.__
+                                                /:   _..__   ''  ":""""'[] |""`\\
+                                                ': :'     `-.     _:._     '"""" :
+                                                 ::          '--=:____:.___....-"
+                                                                O"       O"</pre>
 
 COPTeRR is a Python Package for efficiently computing a permutation tests on regression model weights, performance and other metrics without re-fitting the model for each permutation.  This enables rapid estimation of null distributions (and thus, p-values) for essentially any model characteristic.
 
