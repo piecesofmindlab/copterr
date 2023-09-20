@@ -10,7 +10,7 @@
                                                  ::          '--=:____:.___....-"
                                                                 O"       O"</pre>
 
-COPTeRR is a Python Package for efficiently computing a permutation tests on regression model weights, performance and other metrics without re-fitting the model for each permutation.  This enables rapid estimation of null distributions (and thus, p-values) for essentially any model characteristic.
+COPTeRR is a Python Package for efficiently computing a permutation tests on regression model weights, performance and other metrics without re-fitting the model for each permutation.  This enables rapid estimation of null distributions (and thus, p-values) for any weights-derived model characteristic.
 
 ## Getting started
 To run, you'll need to import either `gen_permutation_weights` or `gen_permutation_weights_grouped` (for multi-feature-set fits) and provide the function with three inputs: X (input features), Y (output targets) and alphas (previously-selected regularization parameters).  For this example, we'll generate fake data.
