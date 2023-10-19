@@ -72,7 +72,7 @@ print("P-Values:", p_values)
 Feel free to vary the noise_amount variable and check out the effects--lower amounts of noise should yield lower p-values for our model's performance. Also note that model r<sup>2</sup> is just a single example--anything you compute from your model's weights can be tested in this manner!
 
 ## Setup
-COPTeRR requires only `numpy`, `pytorch`, `scipy` and `tqdm` and can be used with a variety of Python 3 versions. `cudatoolkit` is required for CUDA-based GPU acceleration.
+COPTeRR requires only `numpy`, `pytorch`, `scipy` and `tqdm` and can be used with a variety of Python 3 versions. `cudatoolkit` is required for (optional) CUDA-based GPU acceleration.
 
 ``` bash
 # Optional clean environment
