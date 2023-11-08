@@ -4,7 +4,7 @@ import scipy
 from tqdm import tqdm
 
 
-def get_permutation_idxs(n_tpts, n_permutations, block_len):
+def create_permutation_idxs(n_tpts, n_permutations, block_len):
     """Very similar to utils.get_permutation_index, but varies where it begins slicing,
     such that the values within each block will vary, not just the block order.
     Should probably be merged in some way into a single function in the future.
@@ -86,129 +86,59 @@ def column_corr_torch(A, B, unbiased=False):
     return r
 
 
-def gen_permutation_weights(X, Y, alphas, permutation_idxs=None, dtype=torch.float, device='cpu', verbose=True):
-    """Generator object for recomputing regression weights given a single set of features, 
-    a set of brain responses (which are permuted each iteration), and precomputed 
-    voxel-wise alphas.  For multiple sets of features, use gen_permutation_weights_grouped.
+class PermuteWeights():
+    def __init__(self, X, Y, alphas, device='cpu', dtype=torch.float):
+        self.device = device
+        self.dtype = dtype
+        self.X = X
+        self.Y = torch.tensor(Y, device=self.device, dtype=self.dtype)
+        self.alphas = alphas
+        self.weights = torch.zeros((self.X.shape[1], self.Y.shape[1]), device=self.device, dtype=self.dtype)
 
-    Parameters
-    ----------
-    X : np.ndarray
-        Design matrix for a single feature set
-    Y : np.ndarray
-        Matrix of brain responses.
-    alphas : np.ndarray
-        1D array of alphas, one for each voxel/column of Y.
-    permutation_idxs : None, optional
-        Array of permuted indices, as returned from get_permutation_idxs.  If None, will compute on
-        the unshuffled Y values a single time (useful for verifying parity with the original fitting).
-    n_permutations : int, optional
-        Number of permutations to yield before stopping.  If array is passed for permutation_idxs,
-        this kwarg will be ignored.
-    block_len : int, optional
-        Length of 'blocks' of indices which are permuted.  If array is passed for permutation_idxs,
-        this kwarg will be ignored.
-    dtype : TYPE
-        torch dtype to use in final computation and yielded weights.  Should be some variation of
-        float, with float16 yielding a small decrease in memory usage.
-    device : str, optional
-        Device for pytorch to use.  If 'cuda', will use gpu (requires CUDA and a CUDA-compatible GPU).
-        If 'cpu', will use CPU and RAM instead.
+    def prepare(self):
+        unique_alphas, alphas_idxs = np.unique(self.alphas, axis=0, return_inverse=True)
+        self._alpha_masks = [alphas_idxs==i for i in range(len(unique_alphas))]
+        self._all_VDUt = []
+        U, s, Vt = scipy.linalg.svd(self.X, full_matrices=False)
+        for alpha in unique_alphas:
+            d = s/(s**2 + alpha)
+            VDUt = (Vt.T * d) @ U.T
+            self._all_VDUt.append(torch.tensor(VDUt, device=self.device, dtype=self.dtype))
+        
+    def permute_weights(self, permutation):
+        for alpha_mask, VDUt in zip(self._alpha_masks, self._all_VDUt):
+            self.weights[:,alpha_mask] = VDUt @ self.Y[permutation][:,alpha_mask]
+        return self.weights
 
-    Yields
-    ------
-    torch.tensor
-        Tensor containing recomputed weights.  To convert to a numpy array, add .numpy() (if 
-        device=='cpu') or .cpu().numpy() (if device=='cuda').
-    """
-    if verbose: print("Performing initial setup...")
-    if isinstance(permutation_idxs, type(None)):
-        permutation_idxs = np.arange(len(Y))
-    X, Y, alphas = [np.nan_to_num(var) for var in [X, Y, alphas]]
-    unique_alphas = np.unique(alphas)
-    alpha_idxs = [np.argwhere(unique_alphas == alpha).flatten()[0] for alpha in alphas]
-    U, s, Vt = scipy.linalg.svd(X, full_matrices=True)
-    VDUt = np.empty((len(unique_alphas), *X.T.shape))
-    D = np.zeros(X.T.shape)
-    for i, alpha in enumerate(unique_alphas):
-        np.fill_diagonal(D, s/(s**2 + alpha**2))
-        VDUt[i] = Vt.T @ D @ U.T
-    VDUt, Y = [torch.tensor(var, dtype=dtype, device=device)
-               for var in (VDUt, Y)]
-    if verbose: print("Initial setup done.")
-    for permutation in permutation_idxs:
-        full_weights = torch.zeros((X.shape[1], Y.shape[1]), dtype=dtype, device=device)
-        for i, alpha in enumerate(unique_alphas):
-            alphas_mask = np.array(alpha_idxs)==i
-            full_weights[:,alphas_mask] = VDUt[i] @ Y[permutation][:,alphas_mask]
-        yield full_weights
-    del VDUt, Y
-    torch.cuda.empty_cache()
+    def compute_true_weights(self):
+        return self.permute_weights(np.arange(len(self.Y)))
 
 
-def gen_permutation_weights_grouped(X, Y, alphas, permutation_idxs=None, dtype=torch.float, device='cpu', verbose=True):
-    """Generator object for recomputing regression weights given a list of feature sets, 
-    a set of brain responses (which are permuted each iteration), and precomputed 
-    voxel-wise alphas.  For a single set of features, use gen_permutation_weights.
+class PermuteWeightsGrouped():
+    def __init__(self, X, Y, deltas, device='cpu', dtype=torch.float):
+        self.device = device
+        self.dtype = dtype
+        self.feature_counts = [fs.shape[1] for fs in X]
+        self.X = np.concatenate(X, axis=1)
+        self.Y = torch.tensor(Y, device=self.device, dtype=self.dtype)
+        self.alphas = np.exp(deltas.T/2)
+        self.weights = torch.zeros((self.X.shape[1], self.Y.shape[1]), device=self.device, dtype=self.dtype)
 
-    Parameters
-    ----------
-    X : list
-        List of np.ndarrays, with each array being a design matrix for a single feature set
-    Y : np.ndarray
-        Matrix of brain responses.
-    alphas : np.ndarray
-        2D array of alphas, with each row representing the alphas for a single voxel/column of Y.
-    permutation_idxs : None, optional
-        Array of permuted indices, as returned from get_permutation_idxs.  If None, will compute on
-        the unshuffled Y values a single time (useful for verifying parity with the original fitting).
-    n_permutations : int, optional
-        Number of permutations to yield before stopping.  If array is passed for permutation_idxs,
-        this kwarg will be ignored.
-    block_len : int, optional
-        Length of 'blocks' of indices which are permuted.  If array is passed for permutation_idxs,
-        this kwarg will be ignored.
-    dtype : TYPE
-        torch dtype to use in final computation and yielded weights.  Should be some variation of
-        float, with float16 yielding a small decrease in memory usage.
-    device : str, optional
-        Device for pytorch to use.  If 'cuda', will use gpu (requires CUDA and a CUDA-compatible GPU).
-        If 'cpu', will use CPU and RAM instead.
+    def prepare(self):
+        unique_alphas, alphas_idxs = np.unique(self.alphas, axis=0, return_inverse=True)
+        self._alpha_masks = [alphas_idxs==i for i in range(len(unique_alphas))]
+        self._all_VDUt = []
+        for alpha in unique_alphas:
+            scaling = np.hstack([np.ones(fs_size)*a for fs_size, a in zip(self.feature_counts, alpha)])
+            U, s, Vt = scipy.linalg.svd(self.X*scaling, full_matrices=True)
+            d = s/(s**2 + 1)
+            VDUt = ((scaling * Vt).T[:,:len(d)] * d) @ U.T
+            self._all_VDUt.append(torch.tensor(VDUt, device=self.device, dtype=self.dtype))
+    
+    def permute_weights(self, permutation):
+        for alpha_mask, VDUt in zip(self._alpha_masks, self._all_VDUt):
+            self.weights[:,alpha_mask] = VDUt @ self.Y[permutation][:,alpha_mask]
+        return self.weights
 
-    Yields
-    ------
-    torch.tensor
-        Tensor containing recomputed weights.  To convert to a numpy array, add .numpy() (if 
-        device=='cpu') or .cpu().numpy() (if device=='cuda').
-    """
-    if verbose: print("Performing initial computations...")
-    if isinstance(permutation_idxs, type(None)):
-        permutation_idxs = [np.arange(len(Y))]
-    X = [np.nan_to_num(x) for x in X]
-    Y, alphas = [np.nan_to_num(var) for var in [Y, alphas]]
-    fs_sizes = [fs.shape[1] for fs in X]
-    X = np.concatenate(X, axis=1)
-    unique_alphas = np.unique(alphas, axis=0)
-    alpha_idxs = [np.where((unique_alphas == alpha).all(axis=1))[
-        0][0] for alpha in alphas]
-    D = np.zeros(X.T.shape)
-    scaled_VDUt = np.empty((len(unique_alphas), *X.T.shape))
-    if verbose:
-        unique_alphas = tqdm(unique_alphas)
-        unique_alphas.set_description("Performing SVDs...")
-    for i, alpha in enumerate(unique_alphas):
-        C = np.hstack([np.full((fs_size), a) for fs_size, a in zip(fs_sizes, alpha)])
-        U, s, Vt = scipy.linalg.svd(X/C, full_matrices=True)
-        np.fill_diagonal(D, (s/(s**2 + 1)))
-        scaled_VDUt[i] = np.diag(1/C) @ Vt.T @ D @ U.T
-    scaled_VDUt, Y = [torch.tensor(var, dtype=dtype, device=device)
-                      for var in (scaled_VDUt, Y)]
-    if verbose: print("Initial computation done.")
-    for permutation in permutation_idxs:
-        full_weights = torch.zeros((X.shape[1], Y.shape[1]), dtype=dtype, device=device)
-        for i, alpha in enumerate(unique_alphas):
-            alphas_mask = np.array(alpha_idxs)==i
-            full_weights[:,alphas_mask] = scaled_VDUt[i] @ Y[permutation][:,alphas_mask]
-        yield full_weights
-    del scaled_VDUt, Y
-    torch.cuda.empty_cache()
+    def compute_true_weights(self):
+        return self.permute_weights(np.arange(len(self.Y)))
