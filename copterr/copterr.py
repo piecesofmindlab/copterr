@@ -76,14 +76,44 @@ def column_corr_torch(A, B, unbiased=False):
     """
     A, B = torch.tensor(A), torch.tensor(B)
     def zs(x): 
-        return (x-torch.mean(x, dim=0)) / torch.std(x, dim=0, unbiased=unbiased)
-    rTmp = torch.sum(zs(A)*zs(B), dim=0)
+        return (x-torch.mean(x, dim=-2, keepdims=True)) / torch.std(x, dim=-2, keepdims=True, unbiased=unbiased)
+    rTmp = torch.sum(zs(A)*zs(B), dim=-2, keepdims=True)
     n = A.shape[0]
     # make sure not to count nans
-    nNaN = torch.sum(torch.isnan(zs(A)) | torch.isnan(zs(B)), dim=0)
+    nNaN = torch.sum(torch.isnan(zs(A)) | torch.isnan(zs(B)), dim=-2, keepdims=True)
     n = n - nNaN
     r = rTmp/n
-    return r
+    return r.squeeze()
+
+
+def quantize_alphas(alphas, base=10):
+    alphas_quantized = base**np.round(np.emath.logn(base, alphas))
+    return alphas_quantized
+
+
+def alphas_to_deltas(alphas):
+    deltas = 2*np.log(alphas.T)
+    return deltas
+
+
+def deltas_to_alphas(deltas):
+    alphas = np.exp(deltas.T/2)
+    return alphas
+
+
+def _process_perm_idxs(permutation, Y_len, block_len):
+    if isinstance(permutation, np.ndarray):
+        pass
+    elif isinstance(permutation, bool):
+        if permutation is True:
+            permutation = create_permutation_idxs(Y_len, 1, block_len)[0]
+        elif permutation is False:
+            permutation = np.arange(Y_len)    
+    elif isinstance(permutation, (list, tuple)):
+        permutation = np.array(permutation)
+    else:
+        raise ValueError("Input 'permutation' should be either False (no permutation), True (to auto-generate), or either a list, tuple, or numpy array of indices.")
+    return permutation
 
 
 class PermuteWeights():
@@ -95,23 +125,35 @@ class PermuteWeights():
         self.alphas = alphas
         self.weights = torch.zeros((self.X.shape[1], self.Y.shape[1]), device=self.device, dtype=self.dtype)
 
-    def prepare(self):
+    def prepare(self, verbose=True):
         unique_alphas, alphas_idxs = np.unique(self.alphas, axis=0, return_inverse=True)
         self._alpha_masks = [alphas_idxs==i for i in range(len(unique_alphas))]
         self._all_VDUt = []
         U, s, Vt = scipy.linalg.svd(self.X, full_matrices=False)
+        if verbose:
+            unique_alphas = tqdm(unique_alphas, desc='Computing Initial SVDs')
         for alpha in unique_alphas:
             d = s/(s**2 + alpha)
             VDUt = (Vt.T * d) @ U.T
             self._all_VDUt.append(torch.tensor(VDUt, device=self.device, dtype=self.dtype))
         
-    def permute_weights(self, permutation):
+    def fit_true_weights(self):
+        return self.fit_permutation(permutation=False)
+    
+    def fit_permutation(self, permutation=True, block_len=1):
+        perm_idxs = _process_perm_idxs(permutation, len(self.Y), block_len)
         for alpha_mask, VDUt in zip(self._alpha_masks, self._all_VDUt):
-            self.weights[:,alpha_mask] = VDUt @ self.Y[permutation][:,alpha_mask]
+            self.weights[:,alpha_mask] = VDUt @ self.Y[perm_idxs][:,alpha_mask]
         return self.weights
-
-    def compute_true_weights(self):
-        return self.permute_weights(np.arange(len(self.Y)))
+    
+    def score(self, Xtest, Ytest, permutation=False, block_len=1, correlation=False):
+        perm_idxs = _process_perm_idxs(permutation, Ytest.shape[-2], block_len)
+        Ypred = Xtest@self.weights
+        score = column_corr_torch(Ypred, Ytest[...,perm_idxs,:])
+        if correlation:
+            return score
+        else:
+            return torch.sign(score)*torch.square(torch.abs(score))
 
 
 class PermuteWeightsGrouped():
@@ -121,24 +163,37 @@ class PermuteWeightsGrouped():
         self.feature_counts = [fs.shape[1] for fs in X]
         self.X = np.concatenate(X, axis=1)
         self.Y = torch.tensor(Y, device=self.device, dtype=self.dtype)
-        self.alphas = np.exp(deltas.T/2)
+        if deltas is not None:
+            self.alphas = deltas_to_alphas(deltas)
         self.weights = torch.zeros((self.X.shape[1], self.Y.shape[1]), device=self.device, dtype=self.dtype)
 
-    def prepare(self):
+    def prepare(self, verbose=True):
         unique_alphas, alphas_idxs = np.unique(self.alphas, axis=0, return_inverse=True)
         self._alpha_masks = [alphas_idxs==i for i in range(len(unique_alphas))]
         self._all_VDUt = []
+        if verbose:
+            unique_alphas = tqdm(unique_alphas, desc='Computing Initial SVDs')
         for alpha in unique_alphas:
-            scaling = np.hstack([np.ones(fs_size)*a for fs_size, a in zip(self.feature_counts, alpha)])
-            U, s, Vt = scipy.linalg.svd(self.X*scaling, full_matrices=True)
+            scaling = np.hstack([np.full(fs_size, a**.5) for fs_size, a in zip(self.feature_counts, alpha)])
+            U, s, Vt = scipy.linalg.svd(self.X/scaling, full_matrices=True)
             d = s/(s**2 + 1)
-            VDUt = ((scaling * Vt).T[:,:len(d)] * d) @ U.T
+            VDUt = ((1/scaling * Vt).T[:,:len(d)] * d) @ U.T
             self._all_VDUt.append(torch.tensor(VDUt, device=self.device, dtype=self.dtype))
     
-    def permute_weights(self, permutation):
+    def fit_true_weights(self):
+        return self.fit_permutation(permutation=False)
+    
+    def fit_permutation(self, permutation=True, block_len=1):
+        perm_idxs = _process_perm_idxs(permutation, len(self.Y), block_len)
         for alpha_mask, VDUt in zip(self._alpha_masks, self._all_VDUt):
-            self.weights[:,alpha_mask] = VDUt @ self.Y[permutation][:,alpha_mask]
+            self.weights[:,alpha_mask] = VDUt @ self.Y[perm_idxs][:,alpha_mask]
         return self.weights
-
-    def compute_true_weights(self):
-        return self.permute_weights(np.arange(len(self.Y)))
+    
+    def score(self, Xtest, Ytest, permutation=False, block_len=1, correlation=False):
+        perm_idxs = _process_perm_idxs(permutation, Ytest.shape[-2], block_len)
+        Ypred = Xtest@self.weights
+        score = column_corr_torch(Ypred, Ytest[...,perm_idxs,:])
+        if correlation:
+            return score
+        else:
+            return torch.sign(score)*torch.square(torch.abs(score))
