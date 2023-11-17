@@ -80,3 +80,17 @@ print("P-Values:", p_values)
 ```
 
 Feel free to vary the noise_amount variable and check out the effects--lower amounts of noise should yield smaller p-values for our model's performance. Also note that model R<sup>2</sup> is just a single example--anything you compute from your model's weights can be tested in this manner!
+
+Check out the tutorials folder for more advanced tips and use cases!
+
+## Setup/Installation
+
+Copterr is dependency-light, and can be installed by downloading this repository and installing via pip:
+
+``` console
+git clone https://github.com/piecesofmindlab/copterr.git
+cd copterr
+pip install .
+```
+
+Use of GPU acceleration requires installation of [PyTorch with CUDA support](https://pytorch.org/get-started/locally/).
