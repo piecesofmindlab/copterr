@@ -41,7 +41,7 @@ Y_test[:,1] += 3  * np.random.randn(n_timepoints_test)
 Y_test[:,2] += 15 * np.random.randn(n_timepoints_test)
 ```
 
-COPTeRR computes permutation tests on already-fit ridge regression models. You can perform this initial fit using a variety of packages, but we recommend [himalaya](https://github.com/gallantlab/himalaya).
+COPTeRR computes permutation tests on already-fit ridge regression models. You can perform this initial fit using a variety of packages, but we recommend [Himalaya](https://github.com/gallantlab/himalaya).
 
 ``` python
 from himalaya.ridge import RidgeCV
@@ -79,4 +79,4 @@ p_values = compute_p_values(model_performance, perm_performance)
 print("P-Values:", p_values)
 ```
 
-Feel free to vary the noise_amount variable and check out the effects--lower amounts of noise should yield smaller p-values for our model's performance. Also note that model r2 is just a single example--anything you compute from your model's weights can be tested in this manner!
+Feel free to vary the noise_amount variable and check out the effects--lower amounts of noise should yield smaller p-values for our model's performance. Also note that model R<sup>2</sup> is just a single example--anything you compute from your model's weights can be tested in this manner!
