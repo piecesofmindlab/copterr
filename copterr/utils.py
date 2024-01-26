@@ -43,6 +43,12 @@ def column_corr_torch(A, B, unbiased=False):
     r = rTmp/n
     return r.squeeze()
 
+def r2_score(y_true, y_pred):
+    error = ((y_true - y_pred) ** 2).sum(0)
+    var = ((y_true - y_true.mean(0)) ** 2).sum(0)
+    r2 = 1. - error / var
+    r2[var == 0] = 0
+    return r2
 
 def quantize_alphas(alphas, base=10):
     alphas_quantized = base**np.round(np.emath.logn(base, alphas))
