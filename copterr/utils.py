@@ -13,7 +13,7 @@ def create_permutation_idxs(n_timepoints, n_permutations, block_len=1):
     return permutation_idxs
 
 
-def column_corr_torch(A, B, unbiased=False):
+def column_corr_torch(A, B, unbiased=False, eps=1e-8):
     """Similar to Stats.utils.column_corr, except works with tensors.  Should be tested more
     thoroughly for possible differences.
 
@@ -26,6 +26,8 @@ def column_corr_torch(A, B, unbiased=False):
     unbiased : bool
         Whether to compute std as a biased estimator.  False computes equivalently to 
         dof=0 in column_corr.
+    eps : float
+        Small constant for numerical stability.
 
     Returns
     -------
@@ -34,13 +36,23 @@ def column_corr_torch(A, B, unbiased=False):
         columns of arrays A and B.
     """
     def zs(x): 
-        return (x-torch.mean(x, dim=-2, keepdims=True)) / torch.std(x, dim=-2, keepdims=True, unbiased=unbiased)
-    rTmp = torch.sum(zs(A)*zs(B), dim=-2, keepdims=True)
-    n = A.shape[0]
-    # make sure not to count nans
-    nNaN = torch.sum(torch.isnan(zs(A)) | torch.isnan(zs(B)), dim=-2, keepdims=True)
-    n = n - nNaN
-    r = rTmp/n
+        mean = torch.mean(x, dim=-2, keepdims=True)
+        std = torch.std(x, dim=-2, keepdims=True, unbiased=unbiased)
+        # Add small constant for numerical stability
+        return (x - mean) / (std + eps)
+    
+    # Compute z-scores
+    zA = zs(A)
+    zB = zs(B)
+    
+    # Count valid samples (not NaN)
+    valid_mask = ~(torch.isnan(zA) | torch.isnan(zB))
+    n = torch.sum(valid_mask, dim=-2, keepdims=True)
+    
+    # Compute correlation only for valid samples
+    rTmp = torch.sum(zA * zB * valid_mask, dim=-2, keepdims=True)
+    r = rTmp / n
+    
     return r.squeeze()
 
 
