@@ -160,11 +160,18 @@ class PermuteWeightsGrouped():
         Args:
             verbose (bool): If True, displays a progress bar during computation.
         """
-        unique_alphas, alphas_idxs = np.unique(self.alphas, axis=0, return_inverse=True)
+        # Convert alphas to a hashable type for unique operation
+        alphas_tuple = tuple(map(tuple, self.alphas.T))
+        unique_alphas_tuple = list(set(alphas_tuple))
+        alphas_idxs = np.array([unique_alphas_tuple.index(a) for a in alphas_tuple])
+        unique_alphas = np.array(unique_alphas_tuple)
+        
         self._alpha_masks = [alphas_idxs==i for i in range(len(unique_alphas))]
         self._all_VDUt = []
+        
         if verbose:
             unique_alphas = tqdm(unique_alphas, desc='Computing Initial SVDs')
+            
         for alpha in unique_alphas:
             scaling = np.hstack([np.full(fs_size, a**.5) for fs_size, a in zip(self.feature_counts, alpha)])
             U, s, Vt = scipy.linalg.svd(self.X/scaling, full_matrices=self.full_matrices)
