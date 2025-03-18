@@ -13,7 +13,7 @@ def create_permutation_idxs(n_timepoints, n_permutations, block_len=1):
     return permutation_idxs
 
 
-def column_corr_torch(A, B, unbiased=False):
+def column_corr_torch(A, B, unbiased=False, epsilon=1e-10):
     """Similar to Stats.utils.column_corr, except works with tensors.  Should be tested more
     thoroughly for possible differences.
 
@@ -26,6 +26,9 @@ def column_corr_torch(A, B, unbiased=False):
     unbiased : bool
         Whether to compute std as a biased estimator.  False computes equivalently to 
         dof=0 in column_corr.
+    epsilon : float, default=1e-10
+        Small constant added to the standard deviation to prevent division by zero
+        or numerical instability with near-zero variance features.
 
     Returns
     -------
@@ -34,7 +37,7 @@ def column_corr_torch(A, B, unbiased=False):
         columns of arrays A and B.
     """
     def zs(x): 
-        return (x-torch.mean(x, dim=-2, keepdims=True)) / torch.std(x, dim=-2, keepdims=True, unbiased=unbiased)
+        return (x-torch.mean(x, dim=-2, keepdims=True)) / (torch.std(x, dim=-2, keepdims=True, unbiased=unbiased) + epsilon)
     rTmp = torch.sum(zs(A)*zs(B), dim=-2, keepdims=True)
     n = A.shape[0]
     # make sure not to count nans
